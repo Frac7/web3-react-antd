@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 
-import { Layout, Input, Typography, Row, Col, Space } from 'antd';
+import { Layout, Input, Typography, Row, Col } from 'antd';
+
+import AddressInformation from './components/index';
+
+import { networks } from './map';
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
@@ -12,10 +16,47 @@ const StyledTitle = styled(Title)`
 `
 
 const App = ({ web3 }) => {
-    const [address, setAddress] = useState(null);
-    const [balance, setBalance] = useState(0);
     const [error, setError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+
+    const [address, setAddress] = useState(null);
+
+    const [balance, setBalance] = useState(0);
+    const [network, setNetwork] = useState(null);
+    const [blockNumber, setBlockNumber] = useState(null);
+
+    const onError = (err) => {
+        setAddress(null);
+
+        setError(err);
+        setIsLoading(false);
+    }
+
+    const onSuccess = (input, result) => {
+        setAddress(input);
+        setBalance(web3.toDecimal(result, 'ether'));
+
+        setError(null);
+        setIsLoading(false);
+    }
+
+    useEffect(() => {
+        web3.version.getNetwork((err, id) => {
+            if (err) {
+                setError(err);
+            } else {
+                setNetwork(networks[id]);
+            }
+        });
+
+        web3.eth.getBlockNumber((err, res) => {
+            if (err) {
+                setError(err);
+            } else {
+                setBlockNumber(web3.toDecimal(res));
+            }
+        })
+    }, [web3]);
 
     return (
         <Layout>
@@ -24,33 +65,39 @@ const App = ({ web3 }) => {
             </Header>
             <Content>
                 <Row justify="center" align="middle">
-                    <Col offset={1} span={4}>
-                        <Space direction="vertical">
-                            <Text>Write an address to know its balance</Text>
-                            {error ? <Text strong type="danger">{error.message}</Text> : <Text strong>{`Balance: ${balance} ETH`}</Text>}
-                        </Space>
-                    </Col>
                     <Col offset={1} span={6}>
                         <Search
                             loading={isLoading}
                             placeholder="Address"
                             enterButton
                             onSearch={(value) => {
-                                try {
-                                    setIsLoading(true);
-                                    web3.eth.getBalance(value, (err,res) => {
-                                        setBalance(web3.utils.fromWei(res, 'ether'));
-                                        setAddress(value);
-                                        setIsLoading(false);
-                                    });
-                                    setError(null); //reset previous error
-                                } catch (e) {
-                                    setError(e);
-                                    setAddress(null); //reset previous address
-                                    setIsLoading(false);
+                                if (web3.isAddress(value)) {
+                                    try {
+                                        setIsLoading(true);
+                                        web3.eth.getBalance(value, (err, res) => {
+                                            if (err) {
+                                                onError(err);
+                                            } else {
+                                                onSuccess(value, res);
+                                            }
+                                        });
+                                    } catch (err) {
+                                        onError(err);
+                                    }
+                                } else {
+                                    onError(new Error('Invalid address'));
                                 }
                             }}
                         />
+                    </Col>
+                    <Col offset={1} span={4}>
+                        {error ?
+                            <Text strong type="danger">{error.message}</Text> :
+                            <AddressInformation
+                                balance={balance}
+                                network={network}
+                                block={blockNumber}
+                            />}
                     </Col>
                 </Row>
             </Content>
